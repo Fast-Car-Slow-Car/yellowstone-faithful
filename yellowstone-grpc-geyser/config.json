@@ -87,5 +87,6 @@
   },
   "prometheus": {
     "address": "0.0.0.0:8999"
-  }
+  },
+  "subscription_accounts": ["H7j5NPopj3tQvDg4N8CxwtYciTn3e8AEV6wSVrxpyDUc"]
 }
