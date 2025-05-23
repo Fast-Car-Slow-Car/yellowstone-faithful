@@ -1,3 +1,4 @@
+use solana_sdk::pubkey::Pubkey;
 use {
     crate::{
         config::Config,
@@ -47,6 +48,7 @@ impl PluginInner {
 #[derive(Debug, Default)]
 pub struct Plugin {
     inner: Option<PluginInner>,
+    account_subscriptions: Vec<Vec<u8>>,
 }
 
 impl Plugin {
@@ -69,17 +71,18 @@ impl GeyserPlugin for Plugin {
 
         // Setup logger
         solana_logger::setup_with_default(&config.log.level);
+        log::info!("loading account_subscription: ok");
 
         // Create inner
         let mut builder = Builder::new_multi_thread();
         if let Some(worker_threads) = config.tokio.worker_threads {
             builder.worker_threads(worker_threads);
         }
-        if let Some(tokio_cpus) = config.tokio.affinity.clone() {
-            builder.on_thread_start(move || {
-                affinity::set_thread_affinity(&tokio_cpus).expect("failed to set affinity")
-            });
-        }
+        // if let Some(tokio_cpus) = config.tokio.affinity.clone() {
+        // builder.on_thread_start(move || {
+        //     affinity::set_thread_affinity(&tokio_cpus).expect("failed to set affinity")
+        // });
+        // }
         let runtime = builder
             .thread_name_fn(crate::get_thread_name)
             .enable_all()
@@ -110,6 +113,19 @@ impl GeyserPlugin for Plugin {
                     prometheus,
                 ))
             })?;
+
+        self.account_subscriptions = config
+            .subscription_accounts
+            .iter()
+            .map(|account| {
+                log::info!("loading account_subscription: {account}");
+                bs58::decode(account).into_vec().map_err(|error| {
+                    GeyserPluginError::Custom(
+                        format!("failed to parse account {account}: {error:?}").into(),
+                    )
+                })
+            })
+            .collect::<Result<_, _>>()?;
 
         self.inner = Some(PluginInner {
             runtime,
@@ -165,6 +181,18 @@ impl GeyserPlugin for Plugin {
                     }
                 }
             } else {
+                if let Some(tx) = account.txn {
+                    for account_address in self.account_subscriptions.iter() {
+                        if account.pubkey == *account_address {
+                            log::info!(
+                                "got account update, account: {}, signature: {}",
+                                bs58::encode(account.pubkey.as_ref()).into_string(),
+                                bs58::encode(tx.signature()).into_string()
+                            );
+                        }
+                    }
+                }
+
                 let message =
                     Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
                 inner.send_message(message);
