@@ -51,6 +51,7 @@ impl PluginInner {
 #[derive(Debug, Default)]
 pub struct Plugin {
     inner: Option<PluginInner>,
+    account_subscriptions: Vec<Vec<u8>>,
 }
 
 impl Plugin {
@@ -147,6 +148,19 @@ impl GeyserPlugin for Plugin {
             }
         };
 
+        self.account_subscriptions = config
+            .subscription_accounts
+            .iter()
+            .map(|account| {
+                log::info!("loading account_subscription: {account}");
+                bs58::decode(account).into_vec().map_err(|error| {
+                    GeyserPluginError::Custom(
+                        format!("failed to parse account {account}: {error:?}").into(),
+                    )
+                })
+            })
+            .collect::<Result<_, _>>()?;
+
         self.inner = Some(PluginInner {
             runtime,
             snapshot_channel: Mutex::new(snapshot_channel),
@@ -215,6 +229,18 @@ impl GeyserPlugin for Plugin {
                     }
                 }
             } else {
+                if let Some(tx) = account.txn {
+                    for account_address in self.account_subscriptions.iter() {
+                        if account.pubkey == *account_address {
+                            log::info!(
+                                "got account update, account: {}, signature: {}",
+                                bs58::encode(account.pubkey.as_ref()).into_string(),
+                                bs58::encode(tx.signature()).into_string()
+                            );
+                        }
+                    }
+                }
+
                 let message =
                     Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
                 inner.send_message(message);
