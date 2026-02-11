@@ -12,7 +12,7 @@ use {
     std::{
         concat, env,
         sync::{
-            atomic::{AtomicBool, Ordering},
+            atomic::{AtomicBool, AtomicU64, Ordering},
             Arc, Mutex,
         },
         time::Duration,
@@ -35,9 +35,16 @@ pub struct PluginInner {
     grpc_channel: mpsc::UnboundedSender<Message>,
     plugin_cancellation_token: CancellationToken,
     plugin_task_tracker: TaskTracker,
+    encoder_handle: std::thread::JoinHandle<()>,
+    correlation_id_counter: AtomicU64,
 }
 
 impl PluginInner {
+    fn next_correlation_id(&self, slot: u64) -> u64 {
+        let counter = self.correlation_id_counter.fetch_add(1, Ordering::Relaxed);
+        (slot << 32) | (counter & 0xFFFF_FFFF)
+    }
+
     fn send_message(&self, message: Message) {
         if self.grpc_channel.send(message).is_ok() {
             metrics::message_queue_size_inc();
@@ -152,6 +159,8 @@ impl GeyserPlugin for Plugin {
             grpc_channel,
             plugin_cancellation_token,
             plugin_task_tracker,
+            encoder_handle,
+            correlation_id_counter: AtomicU64::new(0),
         });
 
         Ok(())
@@ -194,8 +203,9 @@ impl GeyserPlugin for Plugin {
 
             if is_startup {
                 if let Some(channel) = inner.snapshot_channel.lock().unwrap().as_ref() {
+                    let correlation_id = inner.next_correlation_id(slot);
                     let message =
-                        Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
+                        Message::Account(MessageAccount::from_geyser(account, slot, is_startup, correlation_id));
                     match channel.send(Box::new(message)) {
                         Ok(()) => metrics::message_queue_size_inc(),
                         Err(_) => {
@@ -220,8 +230,9 @@ impl GeyserPlugin for Plugin {
                     }
                 }
 
+                let correlation_id = inner.next_correlation_id(slot);
                 let message =
-                    Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
+                    Message::Account(MessageAccount::from_geyser(account, slot, is_startup, correlation_id));
                 inner.send_message(message);
             }
 
@@ -243,7 +254,8 @@ impl GeyserPlugin for Plugin {
         status: &SlotStatus,
     ) -> PluginResult<()> {
         self.with_inner(|inner| {
-            let message = Message::Slot(MessageSlot::from_geyser(slot, parent, status));
+            let correlation_id = inner.next_correlation_id(slot);
+            let message = Message::Slot(MessageSlot::from_geyser(slot, parent, status, correlation_id));
             inner.send_message(message);
             metrics::update_slot_status(status, slot);
             Ok(())
@@ -266,7 +278,8 @@ impl GeyserPlugin for Plugin {
                 ReplicaTransactionInfoVersions::V0_0_3(info) => info,
             };
 
-            let message = Message::Transaction(MessageTransaction::from_geyser(transaction, slot));
+            let correlation_id = inner.next_correlation_id(slot);
+            let message = Message::Transaction(MessageTransaction::from_geyser(transaction, slot, correlation_id));
             inner.send_message(message);
 
             Ok(())
@@ -283,7 +296,8 @@ impl GeyserPlugin for Plugin {
                 ReplicaEntryInfoVersions::V0_0_2(entry) => entry,
             };
 
-            let message = Message::Entry(Arc::new(MessageEntry::from_geyser(entry)));
+            let correlation_id = inner.next_correlation_id(entry.slot);
+            let message = Message::Entry(Arc::new(MessageEntry::from_geyser(entry, correlation_id)));
             inner.send_message(message);
 
             Ok(())
@@ -305,7 +319,8 @@ impl GeyserPlugin for Plugin {
                 ReplicaBlockInfoVersions::V0_0_4(info) => info,
             };
 
-            let message = Message::BlockMeta(Arc::new(MessageBlockMeta::from_geyser(blockinfo)));
+            let correlation_id = inner.next_correlation_id(blockinfo.slot);
+            let message = Message::BlockMeta(Arc::new(MessageBlockMeta::from_geyser(blockinfo, correlation_id)));
             inner.send_message(message);
 
             Ok(())

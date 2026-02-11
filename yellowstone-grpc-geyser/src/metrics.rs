@@ -1,5 +1,10 @@
 use {
-    crate::{config::ConfigPrometheus, version::VERSION as VERSION_INFO},
+    crate::{
+        config::ConfigPrometheus,
+        plugin::{filter::Filter, message::SlotStatus},
+        version::VERSION as VERSION_INFO,
+    },
+    prost_types::Timestamp,
     agave_geyser_plugin_interface::geyser_plugin_interface::SlotStatus as GeyserSlosStatus,
     http_body_util::{combinators::BoxBody, BodyExt, Empty as BodyEmpty, Full as BodyFull},
     hyper::{
@@ -114,6 +119,22 @@ lazy_static::lazy_static! {
             "Histogram of all account update data (kib) received from Geyser plugin"
         )
         .buckets(vec![5.0, 10.0, 20.0, 30.0, 50.0, 100.0, 200.0, 300.0, 500.0, 1000.0, 2000.0, 3000.0, 5000.0, 10000.0])
+    ).unwrap();
+
+    pub static ref GEYSER_BATCH_SIZE: Histogram = Histogram::with_opts(
+        HistogramOpts::new(
+            "yellowstone_geyser_batch_size",
+            "Size of processed message batches"
+        )
+        .buckets(vec![1.0, 4.0, 8.0, 16.0, 24.0, 31.0])
+    ).unwrap();
+
+    static ref GEYSER_PROCESSING_DELAY_MS: Histogram = Histogram::with_opts(
+        HistogramOpts::new(
+            "geyser_processing_delay_ms",
+            "Delay from first touch to send (milliseconds)"
+        )
+        .buckets(vec![1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0])
     ).unwrap();
 }
 
@@ -266,6 +287,9 @@ impl PrometheusService {
             register!(GRPC_SUBSCRIBER_SEND_BANDWIDTH_LOAD);
             register!(GRPC_SUBCRIBER_RX_LOAD);
             register!(GRPC_SUBSCRIBER_QUEUE_SIZE);
+            register!(GEYSER_BATCH_SIZE);
+            register!(GEYSER_PROCESSING_DELAY_MS);
+            register!(GRPC_CLIENT_DISCONNECTS);
 
             VERSION
                 .with_label_values(&[
@@ -458,6 +482,17 @@ pub fn missed_status_message_inc(status: SlotStatus) {
 
 pub fn observe_geyser_account_update_received(data_bytesize: usize) {
     GEYSER_ACCOUNT_UPDATE_RECEIVED.observe(data_bytesize as f64 / 1024.0);
+}
+
+pub fn observe_geyser_processing_delay(created_at: &Timestamp) {
+    use std::time::{Duration, UNIX_EPOCH};
+    let created_at_time = UNIX_EPOCH
+        + Duration::from_secs(created_at.seconds.max(0) as u64)
+        + Duration::from_nanos(created_at.nanos.max(0) as u64);
+    let delay = std::time::SystemTime::now()
+        .duration_since(created_at_time)
+        .unwrap_or_default();
+    GEYSER_PROCESSING_DELAY_MS.observe(delay.as_secs_f64() * 1000.0);
 }
 
 pub fn set_subscriber_send_bandwidth_load<S: AsRef<str>>(subscriber_id: S, load: i64) {

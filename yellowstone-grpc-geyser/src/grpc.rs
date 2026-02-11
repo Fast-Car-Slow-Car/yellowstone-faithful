@@ -328,8 +328,17 @@ struct SlotMessages {
     finalized: bool,
 }
 
+fn next_correlation_id(counter: &mut u64, slot: u64) -> u64 {
+    *counter = counter.wrapping_add(1);
+    (slot << 32) | (*counter & 0xFFFF_FFFF)
+}
+
 impl SlotMessages {
-    pub fn try_seal(&mut self, msgid_gen: &mut MessageId) -> Option<(u64, Message)> {
+    pub fn try_seal(
+        &mut self,
+        msgid_gen: &mut MessageId,
+        correlation_id_counter: &mut u64,
+    ) -> Option<(u64, Message)> {
         if !self.sealed {
             if let Some(block_meta) = &self.block_meta {
                 let executed_transaction_count = block_meta.executed_transaction_count as usize;
@@ -353,11 +362,13 @@ impl SlotMessages {
                         }
                     }
 
+                    let correlation_id = next_correlation_id(correlation_id_counter, block_meta.slot);
                     let message_block = Message::Block(Arc::new(MessageBlock::new(
                         Arc::clone(block_meta),
                         transactions,
                         accounts,
                         entries,
+                        correlation_id,
                     )));
                     let message = (msgid_gen.next(), message_block);
                     self.messages.push(Some(message.clone()));
@@ -571,6 +582,7 @@ impl GrpcService {
         const PROCESSED_MESSAGES_MAX: usize = 31;
         const PROCESSED_MESSAGES_SLEEP: Duration = Duration::from_millis(10);
         let mut msgid_gen = MessageId::default();
+        let mut correlation_id_counter: u64 = 0;
         let mut messages: BTreeMap<u64, SlotMessages> = Default::default();
         let mut processed_messages = Vec::with_capacity(PROCESSED_MESSAGES_MAX);
         let mut processed_first_slot = None;
@@ -699,11 +711,13 @@ impl GrpcService {
                                 metrics::update_invalid_blocks("unexpected message: BlockMeta (duplicate)");
                             }
                             slot_messages.block_meta = Some(Arc::clone(msg));
-                            sealed_block_msg = slot_messages.try_seal(&mut msgid_gen);
+                            sealed_block_msg =
+                                slot_messages.try_seal(&mut msgid_gen, &mut correlation_id_counter);
                         }
                         Message::Transaction(msg) => {
                             slot_messages.transactions.push(Arc::clone(&msg.transaction));
-                            sealed_block_msg = slot_messages.try_seal(&mut msgid_gen);
+                            sealed_block_msg =
+                                slot_messages.try_seal(&mut msgid_gen, &mut correlation_id_counter);
                         }
                         // Dedup accounts by max write_version
                         Message::Account(msg) => {
@@ -726,7 +740,8 @@ impl GrpcService {
                         }
                         Message::Entry(msg) => {
                             slot_messages.entries.push(Arc::clone(msg));
-                            sealed_block_msg = slot_messages.try_seal(&mut msgid_gen);
+                            sealed_block_msg =
+                                slot_messages.try_seal(&mut msgid_gen, &mut correlation_id_counter);
                         }
                         _ => {}
                     }
@@ -762,12 +777,15 @@ impl GrpcService {
                                 }
 
                                 slots.push(parent);
+                                let correlation_id =
+                                    next_correlation_id(&mut correlation_id_counter, parent);
                                 let message_slot = Message::Slot(MessageSlot {
                                     slot: parent,
                                     parent: entry.parent_slot,
                                     status,
                                     dead_error: None,
-                                    created_at: Timestamp::from(SystemTime::now())
+                                    created_at: Timestamp::from(SystemTime::now()),
+                                    correlation_id,
                                 });
                                 messages_vec.push((msgid_gen.next(), message_slot));
                                 metrics::missed_status_message_inc(status);
@@ -1054,6 +1072,7 @@ impl GrpcService {
                                 messages.sort_by_key(|msg| msg.0);
                                 for (_msgid, message) in messages.iter() {
                                     for message in filter.get_updates(message, Some(commitment)) {
+                                        metrics::observe_geyser_processing_delay(&message.created_at);
                                         let proto_size = message.encoded_len().min(u32::MAX as usize) as u32;
                                         match stream_tx.send(Ok(message)).await {
                                             Ok(()) => {
@@ -1095,6 +1114,7 @@ impl GrpcService {
                     if commitment == filter.get_commitment_level() {
                         for (_msgid, message) in messages.iter() {
                             for message in filter.get_updates(message, Some(commitment)) {
+                                metrics::observe_geyser_processing_delay(&message.created_at);
                                 let proto_size = message.encoded_len().min(u32::MAX as usize) as u32;
                                 match stream_tx.try_send(Ok(message)) {
                                     Ok(()) => {
@@ -1207,6 +1227,7 @@ impl GrpcService {
             };
 
             for message in filter.get_updates(&message, None) {
+                metrics::observe_geyser_processing_delay(&message.created_at);
                 if stream_tx.send(Ok(message)).await.is_err() {
                     error!("client #{id}: stream closed");
                     return Err(ClientSnapshotReplayError::ClientGrpcConnectionClosed);
