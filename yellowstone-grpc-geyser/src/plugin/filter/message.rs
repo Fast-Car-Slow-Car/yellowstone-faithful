@@ -73,6 +73,7 @@ pub struct FilteredUpdate {
     pub filters: FilteredUpdateFilters,
     pub message: FilteredUpdateOneof,
     pub created_at: Timestamp,
+    pub correlation_id: Option<u64>,
 }
 
 impl prost::Message for FilteredUpdate {
@@ -84,22 +85,37 @@ impl prost::Message for FilteredUpdate {
         }
         self.message.encode_raw(buf);
         message::encode(11u32, &self.created_at, buf);
+        if let Some(correlation_id) = self.correlation_id {
+            prost::encoding::uint64::encode(12u32, &correlation_id, buf);
+        }
     }
 
     fn encoded_len(&self) -> usize {
         prost_repeated_encoded_len_map!(1u32, self.filters, |filter| filter.as_ref().len())
             + self.message.encoded_len()
             + message::encoded_len(11u32, &self.created_at)
+            + self
+                .correlation_id
+                .map(|id| prost::encoding::uint64::encoded_len(12u32, &id))
+                .unwrap_or(0)
     }
 
     fn merge_field(
         &mut self,
-        _tag: u32,
-        _wire_type: WireType,
-        _buf: &mut impl Buf,
-        _ctx: DecodeContext,
+        tag: u32,
+        wire_type: WireType,
+        buf: &mut impl Buf,
+        ctx: DecodeContext,
     ) -> Result<(), DecodeError> {
-        unimplemented!()
+        if tag == 12u32 {
+            let mut value = 0u64;
+            prost::encoding::uint64::merge(wire_type, buf, &mut value, ctx)?;
+            self.correlation_id = Some(value);
+            Ok(())
+        } else {
+            let _ = (tag, wire_type, buf, ctx);
+            unimplemented!()
+        }
     }
 
     fn clear(&mut self) {
@@ -112,11 +128,13 @@ impl FilteredUpdate {
         filters: FilteredUpdateFilters,
         message: FilteredUpdateOneof,
         created_at: Timestamp,
+        correlation_id: Option<u64>,
     ) -> Self {
         Self {
             filters,
             message,
             created_at,
+            correlation_id,
         }
     }
 
@@ -125,6 +143,7 @@ impl FilteredUpdate {
             FilteredUpdateFilters::new(),
             message,
             Timestamp::from(SystemTime::now()),
+            None,
         )
     }
 
@@ -246,15 +265,17 @@ impl FilteredUpdate {
                 .collect(),
             update_oneof: Some(message),
             created_at: Some(self.created_at),
+            correlation_id: self.correlation_id,
         }
     }
 
     pub fn from_subscribe_update(update: SubscribeUpdate) -> Result<Self, &'static str> {
         let created_at = update.created_at.ok_or("create_at should be defined")?;
+        let correlation_id = update.correlation_id.unwrap_or(0);
 
         let message = match update.update_oneof.ok_or("update should be defined")? {
             UpdateOneof::Account(msg) => {
-                let account = MessageAccount::from_update_oneof(msg, created_at)?;
+                let account = MessageAccount::from_update_oneof(msg, created_at, correlation_id)?;
                 FilteredUpdateOneof::Account(FilteredUpdateAccount {
                     account: account.account,
                     slot: account.slot,
@@ -263,11 +284,11 @@ impl FilteredUpdate {
                 })
             }
             UpdateOneof::Slot(msg) => {
-                let slot = MessageSlot::from_update_oneof(&msg, created_at)?;
+                let slot = MessageSlot::from_update_oneof(&msg, created_at, correlation_id)?;
                 FilteredUpdateOneof::Slot(FilteredUpdateSlot(slot))
             }
             UpdateOneof::Transaction(msg) => {
-                let tx = MessageTransaction::from_update_oneof(msg, created_at)?;
+                let tx = MessageTransaction::from_update_oneof(msg, created_at, correlation_id)?;
                 FilteredUpdateOneof::Transaction(FilteredUpdateTransaction {
                     transaction: tx.transaction,
                     slot: tx.slot,
@@ -292,7 +313,7 @@ impl FilteredUpdate {
                 })
             }
             UpdateOneof::Block(msg) => {
-                let block = MessageBlock::from_update_oneof(msg, created_at)?;
+                let block = MessageBlock::from_update_oneof(msg, created_at, correlation_id)?;
                 FilteredUpdateOneof::Block(Box::new(FilteredUpdateBlock {
                     meta: block.meta,
                     transactions: block.transactions,
@@ -305,11 +326,11 @@ impl FilteredUpdate {
             UpdateOneof::Ping(_) => FilteredUpdateOneof::Ping,
             UpdateOneof::Pong(msg) => FilteredUpdateOneof::Pong(msg),
             UpdateOneof::BlockMeta(msg) => {
-                let block_meta = MessageBlockMeta::from_update_oneof(msg, created_at);
+                let block_meta = MessageBlockMeta::from_update_oneof(msg, created_at, correlation_id);
                 FilteredUpdateOneof::BlockMeta(Arc::new(block_meta))
             }
             UpdateOneof::Entry(msg) => {
-                let entry = MessageEntry::from_update_oneof(&msg, created_at)?;
+                let entry = MessageEntry::from_update_oneof(&msg, created_at, correlation_id)?;
                 FilteredUpdateOneof::Entry(FilteredUpdateEntry(Arc::new(entry)))
             }
         };
@@ -318,6 +339,7 @@ impl FilteredUpdate {
             filters: update.filters.into_iter().map(FilterName::new).collect(),
             message,
             created_at,
+            correlation_id: update.correlation_id,
         })
     }
 }
