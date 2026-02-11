@@ -106,7 +106,7 @@ impl prost::Message for FilteredUpdate {
     ) -> Result<(), DecodeError> {
         if tag == 12u32 {
             let mut value = 0u64;
-            prost::encoding::uint64::merge(wire_type, buf, &mut value, ctx)?;
+            prost::encoding::uint64::merge(wire_type, &mut value, buf, ctx)?;
             self.correlation_id = Some(value);
             Ok(())
         } else {
@@ -321,7 +321,8 @@ impl FilteredUpdate {
             UpdateOneof::Ping(_) => FilteredUpdateOneof::Ping,
             UpdateOneof::Pong(msg) => FilteredUpdateOneof::Pong(msg),
             UpdateOneof::BlockMeta(msg) => {
-                let block_meta = MessageBlockMeta::from_update_oneof(msg, created_at, correlation_id);
+                let block_meta =
+                    MessageBlockMeta::from_update_oneof(msg, created_at, correlation_id);
                 FilteredUpdateOneof::BlockMeta(Arc::new(block_meta))
             }
             UpdateOneof::Entry(msg) => {

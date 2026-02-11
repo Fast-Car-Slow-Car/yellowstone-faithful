@@ -204,8 +204,12 @@ impl GeyserPlugin for Plugin {
             if is_startup {
                 if let Some(channel) = inner.snapshot_channel.lock().unwrap().as_ref() {
                     let correlation_id = inner.next_correlation_id(slot);
-                    let message =
-                        Message::Account(MessageAccount::from_geyser(account, slot, is_startup, correlation_id));
+                    let message = Message::Account(MessageAccount::from_geyser(
+                        account,
+                        slot,
+                        is_startup,
+                        correlation_id,
+                    ));
                     match channel.send(Box::new(message)) {
                         Ok(()) => metrics::message_queue_size_inc(),
                         Err(_) => {
@@ -231,8 +235,12 @@ impl GeyserPlugin for Plugin {
                 }
 
                 let correlation_id = inner.next_correlation_id(slot);
-                let message =
-                    Message::Account(MessageAccount::from_geyser(account, slot, is_startup, correlation_id));
+                let message = Message::Account(MessageAccount::from_geyser(
+                    account,
+                    slot,
+                    is_startup,
+                    correlation_id,
+                ));
                 inner.send_message(message);
             }
 
@@ -255,7 +263,12 @@ impl GeyserPlugin for Plugin {
     ) -> PluginResult<()> {
         self.with_inner(|inner| {
             let correlation_id = inner.next_correlation_id(slot);
-            let message = Message::Slot(MessageSlot::from_geyser(slot, parent, status, correlation_id));
+            let message = Message::Slot(MessageSlot::from_geyser(
+                slot,
+                parent,
+                status,
+                correlation_id,
+            ));
             inner.send_message(message);
             metrics::update_slot_status(status, slot);
             Ok(())
@@ -279,7 +292,11 @@ impl GeyserPlugin for Plugin {
             };
 
             let correlation_id = inner.next_correlation_id(slot);
-            let message = Message::Transaction(MessageTransaction::from_geyser(transaction, slot, correlation_id));
+            let message = Message::Transaction(MessageTransaction::from_geyser(
+                transaction,
+                slot,
+                correlation_id,
+            ));
             inner.send_message(message);
 
             Ok(())
@@ -297,7 +314,8 @@ impl GeyserPlugin for Plugin {
             };
 
             let correlation_id = inner.next_correlation_id(entry.slot);
-            let message = Message::Entry(Arc::new(MessageEntry::from_geyser(entry, correlation_id)));
+            let message =
+                Message::Entry(Arc::new(MessageEntry::from_geyser(entry, correlation_id)));
             inner.send_message(message);
 
             Ok(())
@@ -320,7 +338,10 @@ impl GeyserPlugin for Plugin {
             };
 
             let correlation_id = inner.next_correlation_id(blockinfo.slot);
-            let message = Message::BlockMeta(Arc::new(MessageBlockMeta::from_geyser(blockinfo, correlation_id)));
+            let message = Message::BlockMeta(Arc::new(MessageBlockMeta::from_geyser(
+                blockinfo,
+                correlation_id,
+            )));
             inner.send_message(message);
 
             Ok(())

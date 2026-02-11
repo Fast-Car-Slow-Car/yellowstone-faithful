@@ -577,7 +577,9 @@ impl MessageBlock {
             entries: msg
                 .entries
                 .iter()
-                .map(|entry| MessageEntry::from_update_oneof(entry, created_at, correlation_id).map(Arc::new))
+                .map(|entry| {
+                    MessageEntry::from_update_oneof(entry, created_at, correlation_id).map(Arc::new)
+                })
                 .collect::<Result<Vec<_>, _>>()?,
             created_at,
             correlation_id,
@@ -614,29 +616,37 @@ impl Message {
         correlation_id: u64,
     ) -> FromUpdateOneofResult<Self> {
         Ok(match oneof {
-            UpdateOneof::Account(msg) => {
-                Self::Account(MessageAccount::from_update_oneof(msg, created_at, correlation_id)?)
-            }
-            UpdateOneof::Slot(msg) => {
-                Self::Slot(MessageSlot::from_update_oneof(&msg, created_at, correlation_id)?)
-            }
+            UpdateOneof::Account(msg) => Self::Account(MessageAccount::from_update_oneof(
+                msg,
+                created_at,
+                correlation_id,
+            )?),
+            UpdateOneof::Slot(msg) => Self::Slot(MessageSlot::from_update_oneof(
+                &msg,
+                created_at,
+                correlation_id,
+            )?),
             UpdateOneof::Transaction(msg) => Self::Transaction(
                 MessageTransaction::from_update_oneof(msg, created_at, correlation_id)?,
             ),
             UpdateOneof::TransactionStatus(_) => {
                 return Err("TransactionStatus message is not supported")
             }
-            UpdateOneof::Block(msg) => Self::Block(Arc::new(
-                MessageBlock::from_update_oneof(msg, created_at, correlation_id)?,
-            )),
+            UpdateOneof::Block(msg) => Self::Block(Arc::new(MessageBlock::from_update_oneof(
+                msg,
+                created_at,
+                correlation_id,
+            )?)),
             UpdateOneof::Ping(_) => return Err("Ping message is not supported"),
             UpdateOneof::Pong(_) => return Err("Pong message is not supported"),
             UpdateOneof::BlockMeta(msg) => Self::BlockMeta(Arc::new(
                 MessageBlockMeta::from_update_oneof(msg, created_at, correlation_id),
             )),
-            UpdateOneof::Entry(msg) => {
-                Self::Entry(Arc::new(MessageEntry::from_update_oneof(&msg, created_at, correlation_id)?))
-            }
+            UpdateOneof::Entry(msg) => Self::Entry(Arc::new(MessageEntry::from_update_oneof(
+                &msg,
+                created_at,
+                correlation_id,
+            )?)),
         })
     }
 }

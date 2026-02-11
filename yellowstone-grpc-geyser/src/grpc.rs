@@ -362,7 +362,8 @@ impl SlotMessages {
                         }
                     }
 
-                    let correlation_id = next_correlation_id(correlation_id_counter, block_meta.slot);
+                    let correlation_id =
+                        next_correlation_id(correlation_id_counter, block_meta.slot);
                     let message_block = Message::Block(Arc::new(MessageBlock::new(
                         Arc::clone(block_meta),
                         transactions,

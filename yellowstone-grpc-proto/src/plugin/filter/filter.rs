@@ -76,7 +76,12 @@ macro_rules! filtered_updates_once_owned {
     ($filters:ident, $message:expr, $created_at:expr, $correlation_id:expr) => {{
         let mut messages = FilteredUpdates::new();
         if !$filters.is_empty() {
-            messages.push(FilteredUpdate::new($filters, $message, $created_at, $correlation_id));
+            messages.push(FilteredUpdate::new(
+                $filters,
+                $message,
+                $created_at,
+                $correlation_id,
+            ));
         }
         messages
     }};
@@ -90,7 +95,12 @@ macro_rules! filtered_updates_once_ref {
             for filter in $filters {
                 message_filters.push(filter.clone());
             }
-            messages.push(FilteredUpdate::new(message_filters, $message, $created_at, $correlation_id));
+            messages.push(FilteredUpdate::new(
+                message_filters,
+                $message,
+                $created_at,
+                $correlation_id,
+            ));
         }
         messages
     }};

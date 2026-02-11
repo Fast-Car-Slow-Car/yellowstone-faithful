@@ -1,10 +1,5 @@
 use {
-    crate::{
-        config::ConfigPrometheus,
-        plugin::{filter::Filter, message::SlotStatus},
-        version::VERSION as VERSION_INFO,
-    },
-    prost_types::Timestamp,
+    crate::{config::ConfigPrometheus, version::VERSION as VERSION_INFO},
     agave_geyser_plugin_interface::geyser_plugin_interface::SlotStatus as GeyserSlosStatus,
     http_body_util::{combinators::BoxBody, BodyExt, Empty as BodyEmpty, Full as BodyFull},
     hyper::{
@@ -20,6 +15,7 @@ use {
     prometheus::{
         Histogram, HistogramOpts, IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry, TextEncoder,
     },
+    prost_types::Timestamp,
     solana_clock::Slot,
     std::{
         collections::{hash_map::Entry as HashMapEntry, HashMap},
@@ -136,6 +132,15 @@ lazy_static::lazy_static! {
         )
         .buckets(vec![1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0])
     ).unwrap();
+
+    static ref GRPC_CLIENT_DISCONNECTS: Histogram = Histogram::with_opts(
+        HistogramOpts::new(
+            "grpc_client_disconnects",
+            "Time between client disconnect and server shutdown"
+        )
+        .buckets(vec![1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0])
+    ).unwrap();
+
 }
 
 #[derive(Debug)]
