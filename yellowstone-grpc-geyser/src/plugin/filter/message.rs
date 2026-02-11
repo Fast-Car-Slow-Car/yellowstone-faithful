@@ -109,7 +109,7 @@ impl prost::Message for FilteredUpdate {
     ) -> Result<(), DecodeError> {
         if tag == 12u32 {
             let mut value = 0u64;
-            prost::encoding::uint64::merge(wire_type, buf, &mut value, ctx)?;
+            prost::encoding::uint64::merge(wire_type, &mut value, buf, ctx)?;
             self.correlation_id = Some(value);
             Ok(())
         } else {

@@ -495,7 +495,7 @@ pub fn observe_geyser_processing_delay(created_at: &Timestamp) {
     use std::time::{Duration, UNIX_EPOCH};
     let created_at_time = UNIX_EPOCH
         + Duration::from_secs(created_at.seconds.max(0) as u64)
-        + Duration::from_nanos(created_at.nanos.max(0) as u32);
+        + Duration::from_nanos(created_at.nanos.max(0) as u64);
     let delay = std::time::SystemTime::now()
         .duration_since(created_at_time)
         .unwrap_or_default();
