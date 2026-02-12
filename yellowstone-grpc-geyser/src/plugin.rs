@@ -35,7 +35,6 @@ pub struct PluginInner {
     grpc_channel: mpsc::UnboundedSender<Message>,
     plugin_cancellation_token: CancellationToken,
     plugin_task_tracker: TaskTracker,
-    encoder_handle: std::thread::JoinHandle<()>,
     correlation_id_counter: AtomicU64,
 }
 
@@ -159,7 +158,6 @@ impl GeyserPlugin for Plugin {
             grpc_channel,
             plugin_cancellation_token,
             plugin_task_tracker,
-            encoder_handle,
             correlation_id_counter: AtomicU64::new(0),
         });
 
