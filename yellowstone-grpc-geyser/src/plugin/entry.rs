@@ -162,19 +162,6 @@ impl GeyserPlugin for Plugin {
             })
             .collect::<Result<_, _>>()?;
 
-        self.account_subscriptions = config
-            .subscription_accounts
-            .iter()
-            .map(|account| {
-                log::info!("loading account_subscription: {account}");
-                bs58::decode(account).into_vec().map_err(|error| {
-                    GeyserPluginError::Custom(
-                        format!("failed to parse account {account}: {error:?}").into(),
-                    )
-                })
-            })
-            .collect::<Result<_, _>>()?;
-
         self.inner = Some(PluginInner {
             runtime,
             snapshot_channel: Mutex::new(snapshot_channel),
