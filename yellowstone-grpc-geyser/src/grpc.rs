@@ -68,6 +68,7 @@ use {
         prost::Message as ProstMessage,
     },
 };
+use crate::util::correlation_id::next_correlation_id;
 
 #[derive(Debug)]
 struct BlockhashStatus {
@@ -330,7 +331,10 @@ struct SlotMessages {
 }
 
 impl SlotMessages {
-    pub fn try_seal(&mut self, msgid_gen: &mut MessageId) -> Option<(u64, Message)> {
+    pub fn try_seal(
+        &mut self,
+        msgid_gen: &mut MessageId,
+    ) -> Option<(u64, Message)> {
         if !self.sealed {
             if let Some(block_meta) = &self.block_meta {
                 let executed_transaction_count = block_meta.executed_transaction_count as usize;
@@ -766,12 +770,14 @@ impl GrpcService {
                                 }
 
                                 slots.push(parent);
+                                let correlation_id = next_correlation_id(parent);
                                 let message_slot = Message::Slot(MessageSlot {
                                     slot: parent,
                                     parent: entry.parent_slot,
                                     status,
                                     dead_error: None,
-                                    created_at: Timestamp::from(SystemTime::now())
+                                    created_at: Timestamp::from(SystemTime::now()),
+                                    correlation_id,
                                 });
                                 messages_vec.push((msgid_gen.next(), message_slot));
                                 metrics::missed_status_message_inc(status);
@@ -1066,6 +1072,7 @@ impl GrpcService {
                                 messages.sort_by_key(|msg| msg.0);
                                 for (_msgid, message) in messages.iter() {
                                     for message in filter.get_updates(message, Some(commitment)) {
+                                        metrics::observe_geyser_processing_delay(&message.created_at);
                                         let proto_size = message.encoded_len().min(u32::MAX as usize) as u32;
                                         match stream_tx.send(Ok(message)).await {
                                             Ok(()) => {
@@ -1111,6 +1118,7 @@ impl GrpcService {
                     if commitment == filter.get_commitment_level() {
                         for (_msgid, message) in messages.iter() {
                             for message in filter.get_updates(message, Some(commitment)) {
+                                metrics::observe_geyser_processing_delay(&message.created_at);
                                 let proto_size = message.encoded_len().min(u32::MAX as usize) as u32;
                                 match stream_tx.try_send(Ok(message)) {
                                     Ok(()) => {
@@ -1225,6 +1233,7 @@ impl GrpcService {
             };
 
             for message in filter.get_updates(&message, None) {
+                metrics::observe_geyser_processing_delay(&message.created_at);
                 if stream_tx.send(Ok(message)).await.is_err() {
                     error!("client #{id}: stream closed");
                     return Err(ClientSnapshotReplayError::ClientGrpcConnectionClosed);

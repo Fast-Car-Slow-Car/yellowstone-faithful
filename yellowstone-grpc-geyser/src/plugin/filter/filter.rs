@@ -73,24 +73,34 @@ pub enum FilterError {
 pub type FilterResult<T> = Result<T, FilterError>;
 
 macro_rules! filtered_updates_once_owned {
-    ($filters:ident, $message:expr, $created_at:expr) => {{
+    ($filters:ident, $message:expr, $created_at:expr, $correlation_id:expr) => {{
         let mut messages = FilteredUpdates::new();
         if !$filters.is_empty() {
-            messages.push(FilteredUpdate::new($filters, $message, $created_at));
+            messages.push(FilteredUpdate::new(
+                $filters,
+                $message,
+                $created_at,
+                $correlation_id,
+            ));
         }
         messages
     }};
 }
 
 macro_rules! filtered_updates_once_ref {
-    ($filters:ident, $message:expr, $created_at:expr) => {{
+    ($filters:ident, $message:expr, $created_at:expr, $correlation_id:expr) => {{
         let mut messages = FilteredUpdates::new();
         if !$filters.is_empty() {
             let mut message_filters = FilteredUpdateFilters::new();
             for filter in $filters {
                 message_filters.push(filter.clone());
             }
-            messages.push(FilteredUpdate::new(message_filters, $message, $created_at));
+            messages.push(FilteredUpdate::new(
+                message_filters,
+                $message,
+                $created_at,
+                $correlation_id,
+            ));
         }
         messages
     }};
@@ -348,7 +358,8 @@ impl FilterAccounts {
         filtered_updates_once_owned!(
             filters,
             FilteredUpdateOneof::account(message, accounts_data_slice.clone()),
-            message.created_at
+            message.created_at,
+            Some(message.correlation_id)
         )
     }
 }
@@ -654,7 +665,8 @@ impl FilterSlots {
         filtered_updates_once_owned!(
             filters,
             FilteredUpdateOneof::slot(message.clone()),
-            message.created_at
+            message.created_at,
+            Some(message.correlation_id)
         )
     }
 }
@@ -810,7 +822,8 @@ impl FilterTransactions {
                     FilteredUpdateOneof::transaction_status(message)
                 }
             },
-            message.created_at
+            message.created_at,
+            Some(message.correlation_id)
         )
     }
 }
@@ -841,7 +854,8 @@ impl FilterEntries {
         filtered_updates_once_ref!(
             filters,
             FilteredUpdateOneof::entry(Arc::clone(message)),
-            message.created_at
+            message.created_at,
+            Some(message.correlation_id)
         )
     }
 }
@@ -971,6 +985,7 @@ impl FilterBlocks {
                     entries,
                 })),
                 message.created_at,
+                Some(message.correlation_id),
             ));
         }
         updates
@@ -1003,7 +1018,8 @@ impl FilterBlocksMeta {
         filtered_updates_once_ref!(
             filters,
             FilteredUpdateOneof::block_meta(Arc::clone(message)),
-            message.created_at
+            message.created_at,
+            Some(message.correlation_id)
         )
     }
 }
@@ -1138,6 +1154,7 @@ mod tests {
             SubscribeRequest, SubscribeRequestFilterAccounts, SubscribeRequestFilterTransactions,
         },
     };
+    use crate::util::correlation_id::next_correlation_id;
 
     fn create_filter_names() -> FilterNames {
         FilterNames::new(64, 1024, Duration::from_secs(1))
@@ -1195,6 +1212,7 @@ mod tests {
             }),
             slot: 100,
             created_at: Timestamp::from(SystemTime::now()),
+            correlation_id: next_correlation_id(100),
         }
     }
 
