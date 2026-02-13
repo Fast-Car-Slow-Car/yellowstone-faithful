@@ -72,7 +72,8 @@ impl GeyserPlugin for Plugin {
             "-",
             env!("CARGO_PKG_VERSION"),
             "+",
-            env!("GIT_VERSION")
+            env!("GIT_VERSION"),
+            "+fcsc"
         )
     }
 
