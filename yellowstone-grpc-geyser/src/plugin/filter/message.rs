@@ -73,6 +73,7 @@ pub struct FilteredUpdate {
     pub filters: FilteredUpdateFilters,
     pub message: FilteredUpdateOneof,
     pub created_at: Timestamp,
+    pub correlation_id: Option<u64>,
 }
 
 impl prost::Message for FilteredUpdate {
@@ -84,22 +85,37 @@ impl prost::Message for FilteredUpdate {
         }
         self.message.encode_raw(buf);
         message::encode(11u32, &self.created_at, buf);
+        if let Some(correlation_id) = self.correlation_id {
+            prost::encoding::uint64::encode(12u32, &correlation_id, buf);
+        }
     }
 
     fn encoded_len(&self) -> usize {
         prost_repeated_encoded_len_map!(1u32, self.filters, |filter| filter.as_ref().len())
             + self.message.encoded_len()
             + message::encoded_len(11u32, &self.created_at)
+            + self
+                .correlation_id
+                .map(|id| prost::encoding::uint64::encoded_len(12u32, &id))
+                .unwrap_or(0)
     }
 
     fn merge_field(
         &mut self,
-        _tag: u32,
-        _wire_type: WireType,
-        _buf: &mut impl Buf,
-        _ctx: DecodeContext,
+        tag: u32,
+        wire_type: WireType,
+        buf: &mut impl Buf,
+        ctx: DecodeContext,
     ) -> Result<(), DecodeError> {
-        unimplemented!()
+        if tag == 12u32 {
+            let mut value = 0u64;
+            prost::encoding::uint64::merge(wire_type, &mut value, buf, ctx)?;
+            self.correlation_id = Some(value);
+            Ok(())
+        } else {
+            let _ = (tag, wire_type, buf, ctx);
+            unimplemented!()
+        }
     }
 
     fn clear(&mut self) {
@@ -112,11 +128,13 @@ impl FilteredUpdate {
         filters: FilteredUpdateFilters,
         message: FilteredUpdateOneof,
         created_at: Timestamp,
+        correlation_id: Option<u64>,
     ) -> Self {
         Self {
             filters,
             message,
             created_at,
+            correlation_id,
         }
     }
 
@@ -125,6 +143,7 @@ impl FilteredUpdate {
             FilteredUpdateFilters::new(),
             message,
             Timestamp::from(SystemTime::now()),
+            None,
         )
     }
 
@@ -246,6 +265,7 @@ impl FilteredUpdate {
                 .collect(),
             update_oneof: Some(message),
             created_at: Some(self.created_at),
+            correlation_id: self.correlation_id,
         }
     }
 
@@ -305,7 +325,8 @@ impl FilteredUpdate {
             UpdateOneof::Ping(_) => FilteredUpdateOneof::Ping,
             UpdateOneof::Pong(msg) => FilteredUpdateOneof::Pong(msg),
             UpdateOneof::BlockMeta(msg) => {
-                let block_meta = MessageBlockMeta::from_update_oneof(msg, created_at);
+                let block_meta =
+                    MessageBlockMeta::from_update_oneof(msg, created_at);
                 FilteredUpdateOneof::BlockMeta(Arc::new(block_meta))
             }
             UpdateOneof::Entry(msg) => {
@@ -318,6 +339,7 @@ impl FilteredUpdate {
             filters: update.filters.into_iter().map(FilterName::new).collect(),
             message,
             created_at,
+            correlation_id: update.correlation_id,
         })
     }
 }
@@ -1047,6 +1069,7 @@ pub mod tests {
             time::SystemTime,
         },
         yellowstone_grpc_proto::geyser::{SubscribeUpdate, SubscribeUpdateBlockMeta},
+        crate::util::correlation_id::next_correlation_id,
     };
 
     pub fn create_message_filters(names: &[&str]) -> FilteredUpdateFilters {
@@ -1119,6 +1142,7 @@ pub mod tests {
                             slot,
                             is_startup,
                             created_at: Timestamp::from(SystemTime::now()),
+                            correlation_id: next_correlation_id(slot),
                         };
                         vec.push((msg, data_slice));
                     }
@@ -1138,6 +1162,7 @@ pub mod tests {
                 executed_transaction_count: 32,
                 starting_transaction_index: 1000,
                 created_at: Timestamp::from(SystemTime::now()),
+                correlation_id: next_correlation_id(299888121),
             },
             MessageEntry {
                 slot: 299888121,
@@ -1147,6 +1172,7 @@ pub mod tests {
                 executed_transaction_count: 32,
                 starting_transaction_index: 1000,
                 created_at: Timestamp::from(SystemTime::now()),
+                correlation_id: next_correlation_id(299888121),
             },
         ]
         .into_iter()
@@ -1230,6 +1256,7 @@ pub mod tests {
                         entries_count: entries.len() as u64,
                     },
                     created_at: Timestamp::from(SystemTime::now()),
+                    correlation_id: next_correlation_id(slot),
                 };
                 let mut block_meta2 = block_meta1.clone();
                 block_meta2.rewards =
@@ -1270,6 +1297,7 @@ pub mod tests {
             filters: create_message_filters(filters),
             message,
             created_at: Timestamp::from(SystemTime::now()),
+            correlation_id: Some(next_correlation_id(42)),
         };
         let update = msg.as_subscribe_update();
         assert_eq!(msg.encoded_len(), update.encoded_len());
@@ -1394,6 +1422,7 @@ pub mod tests {
                             status,
                             dead_error: None,
                             created_at: Timestamp::from(SystemTime::now()),
+                            correlation_id: next_correlation_id(slot),
                         }),
                     )
                 }
@@ -1405,6 +1434,7 @@ pub mod tests {
                         status: SlotStatus::Dead,
                         dead_error: Some("123".to_owned()),
                         created_at: Timestamp::from(SystemTime::now()),
+                        correlation_id: next_correlation_id(slot),
                     }),
                 )
             }
@@ -1480,6 +1510,7 @@ pub mod tests {
                 transaction,
                 slot: 42,
                 created_at: Timestamp::from(SystemTime::now()),
+                correlation_id: next_correlation_id(42),
             };
             encode_decode_cmp(&["123"], FilteredUpdateOneof::transaction(&msg));
             encode_decode_cmp(&["123"], FilteredUpdateOneof::transaction_status(&msg));
