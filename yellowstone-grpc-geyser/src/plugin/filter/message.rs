@@ -325,8 +325,7 @@ impl FilteredUpdate {
             UpdateOneof::Ping(_) => FilteredUpdateOneof::Ping,
             UpdateOneof::Pong(msg) => FilteredUpdateOneof::Pong(msg),
             UpdateOneof::BlockMeta(msg) => {
-                let block_meta =
-                    MessageBlockMeta::from_update_oneof(msg, created_at);
+                let block_meta = MessageBlockMeta::from_update_oneof(msg, created_at);
                 FilteredUpdateOneof::BlockMeta(Arc::new(block_meta))
             }
             UpdateOneof::Entry(msg) => {
@@ -1051,6 +1050,9 @@ pub mod tests {
                 MessageTransaction, MessageTransactionInfo, SlotStatus,
             },
         },
+        crate::util::correlation_id::{
+            correlation_id_for_kind, correlation_id_for_transaction, next_correlation_id,
+        },
         bytes::Bytes,
         prost::Message as _,
         prost_011::Message as _,
@@ -1069,7 +1071,6 @@ pub mod tests {
             time::SystemTime,
         },
         yellowstone_grpc_proto::geyser::{SubscribeUpdate, SubscribeUpdateBlockMeta},
-        crate::util::correlation_id::next_correlation_id,
     };
 
     pub fn create_message_filters(names: &[&str]) -> FilteredUpdateFilters {
@@ -1547,5 +1548,83 @@ pub mod tests {
         for entry in create_entries() {
             encode_decode_cmp(&["123"], FilteredUpdateOneof::entry(entry));
         }
+    }
+
+    #[test]
+    fn test_subscribe_update_correlation_id_is_deterministic_for_same_transaction() {
+        let transaction = load_predefined_transactions()
+            .into_iter()
+            .next()
+            .expect("fixture should include at least one transaction");
+        let slot = 42u64;
+        let correlation_id =
+            correlation_id_for_transaction(slot, transaction.index as u64, &transaction.signature);
+        let message = MessageTransaction {
+            transaction,
+            slot,
+            created_at: Timestamp::from(SystemTime::now()),
+            correlation_id,
+        };
+
+        let one = FilteredUpdate::new(
+            create_message_filters(&["tx"]),
+            FilteredUpdateOneof::transaction(&message),
+            Timestamp::from(SystemTime::now()),
+            Some(message.correlation_id),
+        )
+        .as_subscribe_update();
+        let two = FilteredUpdate::new(
+            create_message_filters(&["tx"]),
+            FilteredUpdateOneof::transaction(&message),
+            Timestamp::from(SystemTime::now()),
+            Some(message.correlation_id),
+        )
+        .as_subscribe_update();
+
+        assert_eq!(one.correlation_id, two.correlation_id);
+        assert_eq!(one.correlation_id, Some(message.correlation_id));
+    }
+
+    #[test]
+    fn test_subscribe_update_correlation_id_tx_vs_fallback() {
+        let transaction = load_predefined_transactions()
+            .into_iter()
+            .next()
+            .expect("fixture should include at least one transaction");
+        let slot = 42u64;
+        let tx_correlation_id =
+            correlation_id_for_transaction(slot, transaction.index as u64, &transaction.signature);
+        let slot_correlation_id = correlation_id_for_kind(slot, "slot");
+
+        let tx_update = FilteredUpdate::new(
+            create_message_filters(&["tx"]),
+            FilteredUpdateOneof::transaction(&MessageTransaction {
+                transaction,
+                slot,
+                created_at: Timestamp::from(SystemTime::now()),
+                correlation_id: tx_correlation_id,
+            }),
+            Timestamp::from(SystemTime::now()),
+            Some(tx_correlation_id),
+        )
+        .as_subscribe_update();
+        let slot_update = FilteredUpdate::new(
+            create_message_filters(&["slot"]),
+            FilteredUpdateOneof::slot(MessageSlot {
+                slot,
+                parent: None,
+                status: SlotStatus::Processed,
+                dead_error: None,
+                created_at: Timestamp::from(SystemTime::now()),
+                correlation_id: slot_correlation_id,
+            }),
+            Timestamp::from(SystemTime::now()),
+            Some(slot_correlation_id),
+        )
+        .as_subscribe_update();
+
+        assert_eq!(tx_update.correlation_id, Some(tx_correlation_id));
+        assert_eq!(slot_update.correlation_id, Some(slot_correlation_id));
+        assert_ne!(tx_update.correlation_id, slot_update.correlation_id);
     }
 }

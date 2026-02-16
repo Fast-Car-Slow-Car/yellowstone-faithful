@@ -5351,6 +5351,7 @@ dependencies = [
  "solana-logger",
  "solana-message",
  "solana-pubkey 4.0.0",
+ "solana-sha256-hasher",
  "solana-signature",
  "solana-signer",
  "solana-storage-proto",

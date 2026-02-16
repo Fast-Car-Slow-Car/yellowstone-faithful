@@ -1126,6 +1126,7 @@ impl FilterAccountsDataSlice {
 
 #[cfg(test)]
 mod tests {
+    use crate::util::correlation_id::next_correlation_id;
     use {
         super::Filter,
         crate::plugin::{
@@ -1154,7 +1155,6 @@ mod tests {
             SubscribeRequest, SubscribeRequestFilterAccounts, SubscribeRequestFilterTransactions,
         },
     };
-    use crate::util::correlation_id::next_correlation_id;
 
     fn create_filter_names() -> FilterNames {
         FilterNames::new(64, 1024, Duration::from_secs(1))

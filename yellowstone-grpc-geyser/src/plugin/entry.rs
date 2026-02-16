@@ -28,8 +28,6 @@ use {
     },
     tokio_util::{sync::CancellationToken, task::TaskTracker},
 };
-use crate::util::correlation_id::next_correlation_id;
-
 #[derive(Debug)]
 pub struct PluginInner {
     runtime: Runtime,
@@ -217,11 +215,8 @@ impl GeyserPlugin for Plugin {
 
             if is_startup {
                 if let Some(channel) = inner.snapshot_channel.lock().unwrap().as_ref() {
-                    let message = Message::Account(MessageAccount::from_geyser(
-                        account,
-                        slot,
-                        is_startup,
-                    ));
+                    let message =
+                        Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
                     match channel.send(Box::new(message)) {
                         Ok(()) => metrics::message_queue_size_inc(),
                         Err(_) => {
@@ -246,11 +241,8 @@ impl GeyserPlugin for Plugin {
                     }
                 }
 
-                let message = Message::Account(MessageAccount::from_geyser(
-                    account,
-                    slot,
-                    is_startup,
-                ));
+                let message =
+                    Message::Account(MessageAccount::from_geyser(account, slot, is_startup));
                 inner.send_message(message);
             }
 
@@ -272,11 +264,7 @@ impl GeyserPlugin for Plugin {
         status: &SlotStatus,
     ) -> PluginResult<()> {
         self.with_inner(|inner| {
-            let message = Message::Slot(MessageSlot::from_geyser(
-                slot,
-                parent,
-                status,
-            ));
+            let message = Message::Slot(MessageSlot::from_geyser(slot, parent, status));
             inner.send_message(message);
             metrics::update_slot_status(status, slot);
             Ok(())
@@ -299,10 +287,7 @@ impl GeyserPlugin for Plugin {
                 ReplicaTransactionInfoVersions::V0_0_3(info) => info,
             };
 
-            let message = Message::Transaction(MessageTransaction::from_geyser(
-                transaction,
-                slot,
-            ));
+            let message = Message::Transaction(MessageTransaction::from_geyser(transaction, slot));
             inner.send_message(message);
 
             Ok(())
@@ -319,8 +304,7 @@ impl GeyserPlugin for Plugin {
                 ReplicaEntryInfoVersions::V0_0_2(entry) => entry,
             };
 
-            let message =
-                Message::Entry(Arc::new(MessageEntry::from_geyser(entry, next_correlation_id(entry.slot))));
+            let message = Message::Entry(Arc::new(MessageEntry::from_geyser(entry)));
             inner.send_message(message);
 
             Ok(())
@@ -342,10 +326,7 @@ impl GeyserPlugin for Plugin {
                 ReplicaBlockInfoVersions::V0_0_4(info) => info,
             };
 
-            let message = Message::BlockMeta(Arc::new(MessageBlockMeta::from_geyser(
-                blockinfo,
-                next_correlation_id(blockinfo.slot),
-            )));
+            let message = Message::BlockMeta(Arc::new(MessageBlockMeta::from_geyser(blockinfo)));
             inner.send_message(message);
 
             Ok(())

@@ -1,3 +1,4 @@
+use crate::util::correlation_id::correlation_id_for_kind;
 use {
     crate::{
         config::ConfigGrpc,
@@ -68,7 +69,6 @@ use {
         prost::Message as ProstMessage,
     },
 };
-use crate::util::correlation_id::next_correlation_id;
 
 #[derive(Debug)]
 struct BlockhashStatus {
@@ -331,10 +331,7 @@ struct SlotMessages {
 }
 
 impl SlotMessages {
-    pub fn try_seal(
-        &mut self,
-        msgid_gen: &mut MessageId,
-    ) -> Option<(u64, Message)> {
+    pub fn try_seal(&mut self, msgid_gen: &mut MessageId) -> Option<(u64, Message)> {
         if !self.sealed {
             if let Some(block_meta) = &self.block_meta {
                 let executed_transaction_count = block_meta.executed_transaction_count as usize;
@@ -770,7 +767,7 @@ impl GrpcService {
                                 }
 
                                 slots.push(parent);
-                                let correlation_id = next_correlation_id(parent);
+                                let correlation_id = correlation_id_for_kind(parent, "slot");
                                 let message_slot = Message::Slot(MessageSlot {
                                     slot: parent,
                                     parent: entry.parent_slot,

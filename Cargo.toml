@@ -71,6 +71,7 @@ vergen = "9.0.6"
 agave-geyser-plugin-interface = "=3.1.8"
 solana-account-decoder = "=3.1.8"
 solana-logger = "3.0.0"
+solana-sha256-hasher = "3.1.0"
 solana-storage-proto = { version = "=3.1.8", features = ["agave-unstable-api"] }
 solana-transaction-context = "=3.1.8"
 solana-transaction-status = "=3.1.8"
@@ -115,4 +116,3 @@ agave-geyser-plugin-interface = { git = "https://github.com/rpcpool/solana-publi
 [profile.release]
 lto = true
 codegen-units = 1
-

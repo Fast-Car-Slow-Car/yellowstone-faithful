@@ -4,5 +4,5 @@ pub mod stream;
 #[cfg(test)]
 pub(crate) mod testkit;
 
-pub mod sync;
 pub mod correlation_id;
+pub mod sync;

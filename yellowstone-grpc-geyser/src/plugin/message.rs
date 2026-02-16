@@ -1,3 +1,4 @@
+use crate::util::correlation_id::{correlation_id_for_kind, correlation_id_for_transaction};
 use {
     super::convert_to,
     agave_geyser_plugin_interface::geyser_plugin_interface::{
@@ -26,7 +27,6 @@ use {
         solana::storage::confirmed_block,
     },
 };
-use crate::util::correlation_id::next_correlation_id;
 
 type FromUpdateOneofResult<T> = Result<T, &'static str>;
 
@@ -156,11 +156,7 @@ pub struct MessageSlot {
 }
 
 impl MessageSlot {
-    pub fn from_geyser(
-        slot: Slot,
-        parent: Option<Slot>,
-        status: &GeyserSlotStatus,
-    ) -> Self {
+    pub fn from_geyser(slot: Slot, parent: Option<Slot>, status: &GeyserSlotStatus) -> Self {
         Self {
             slot,
             parent,
@@ -171,7 +167,7 @@ impl MessageSlot {
                 None
             },
             created_at: Timestamp::from(SystemTime::now()),
-            correlation_id: next_correlation_id(slot),
+            correlation_id: correlation_id_for_kind(slot, "slot"),
         }
     }
 
@@ -187,7 +183,7 @@ impl MessageSlot {
                 .into(),
             dead_error: msg.dead_error.clone(),
             created_at,
-            correlation_id: next_correlation_id(msg.slot),
+            correlation_id: correlation_id_for_kind(msg.slot, "slot"),
         })
     }
 }
@@ -256,17 +252,13 @@ pub struct MessageAccount {
 }
 
 impl MessageAccount {
-    pub fn from_geyser(
-        info: &ReplicaAccountInfoV3<'_>,
-        slot: Slot,
-        is_startup: bool,
-    ) -> Self {
+    pub fn from_geyser(info: &ReplicaAccountInfoV3<'_>, slot: Slot, is_startup: bool) -> Self {
         Self {
             account: Arc::new(MessageAccountInfo::from_geyser(info)),
             slot,
             is_startup,
             created_at: Timestamp::from(SystemTime::now()),
-            correlation_id: next_correlation_id(slot),
+            correlation_id: correlation_id_for_kind(slot, "account"),
         }
     }
 
@@ -281,7 +273,7 @@ impl MessageAccount {
             slot: msg.slot,
             is_startup: msg.is_startup,
             created_at,
-            correlation_id: next_correlation_id(msg.slot),
+            correlation_id: correlation_id_for_kind(msg.slot, "account"),
         })
     }
 }
@@ -391,15 +383,12 @@ pub struct MessageTransaction {
 }
 
 impl MessageTransaction {
-    pub fn from_geyser(
-        info: &ReplicaTransactionInfoV3<'_>,
-        slot: Slot,
-    ) -> Self {
+    pub fn from_geyser(info: &ReplicaTransactionInfoV3<'_>, slot: Slot) -> Self {
         Self {
             transaction: Arc::new(MessageTransactionInfo::from_geyser(info)),
             slot,
             created_at: Timestamp::from(SystemTime::now()),
-            correlation_id: next_correlation_id(slot),
+            correlation_id: correlation_id_for_transaction(slot, info.index as u64, info.signature),
         }
     }
 
@@ -407,14 +396,19 @@ impl MessageTransaction {
         msg: SubscribeUpdateTransaction,
         created_at: Timestamp,
     ) -> FromUpdateOneofResult<Self> {
+        let transaction = Arc::new(MessageTransactionInfo::from_update_oneof(
+            msg.transaction
+                .ok_or("transaction message should be defined")?,
+        )?);
         Ok(Self {
-            transaction: Arc::new(MessageTransactionInfo::from_update_oneof(
-                msg.transaction
-                    .ok_or("transaction message should be defined")?,
-            )?),
+            correlation_id: correlation_id_for_transaction(
+                msg.slot,
+                transaction.index as u64,
+                &transaction.signature,
+            ),
+            transaction,
             slot: msg.slot,
             created_at,
-            correlation_id: next_correlation_id(msg.slot),
         })
     }
 }
@@ -432,7 +426,7 @@ pub struct MessageEntry {
 }
 
 impl MessageEntry {
-    pub fn from_geyser(info: &ReplicaEntryInfoV2, correlation_id: u64) -> Self {
+    pub fn from_geyser(info: &ReplicaEntryInfoV2) -> Self {
         Self {
             slot: info.slot,
             index: info.index,
@@ -444,7 +438,7 @@ impl MessageEntry {
                 .try_into()
                 .expect("failed convert usize to u64"),
             created_at: Timestamp::from(SystemTime::now()),
-            correlation_id,
+            correlation_id: correlation_id_for_kind(info.slot, "entry"),
         }
     }
 
@@ -463,7 +457,7 @@ impl MessageEntry {
             executed_transaction_count: msg.executed_transaction_count,
             starting_transaction_index: msg.starting_transaction_index,
             created_at,
-            correlation_id: next_correlation_id(msg.slot),
+            correlation_id: correlation_id_for_kind(msg.slot, "entry"),
         })
     }
 }
@@ -490,7 +484,7 @@ impl DerefMut for MessageBlockMeta {
 }
 
 impl MessageBlockMeta {
-    pub fn from_geyser(info: &ReplicaBlockInfoV4<'_>, correlation_id: u64) -> Self {
+    pub fn from_geyser(info: &ReplicaBlockInfoV4<'_>) -> Self {
         Self {
             block_meta: SubscribeUpdateBlockMeta {
                 parent_slot: info.parent_slot,
@@ -507,17 +501,14 @@ impl MessageBlockMeta {
                 entries_count: info.entry_count,
             },
             created_at: Timestamp::from(SystemTime::now()),
-            correlation_id,
+            correlation_id: correlation_id_for_kind(info.slot, "block_meta"),
         }
     }
 
-    pub fn from_update_oneof(
-        block_meta: SubscribeUpdateBlockMeta,
-        created_at: Timestamp,
-    ) -> Self {
+    pub fn from_update_oneof(block_meta: SubscribeUpdateBlockMeta, created_at: Timestamp) -> Self {
         Self {
             created_at,
-            correlation_id: next_correlation_id(block_meta.slot),
+            correlation_id: correlation_id_for_kind(block_meta.slot, "block_meta"),
             block_meta,
         }
     }
@@ -547,7 +538,7 @@ impl MessageBlock {
             accounts,
             entries,
             created_at: Timestamp::from(SystemTime::now()),
-            correlation_id: next_correlation_id(meta.slot),
+            correlation_id: correlation_id_for_kind(meta.slot, "block"),
             meta,
         }
     }
@@ -570,7 +561,7 @@ impl MessageBlock {
                     entries_count: msg.entries_count,
                 },
                 created_at,
-                correlation_id: next_correlation_id(msg.slot),
+                correlation_id: correlation_id_for_kind(msg.slot, "block_meta"),
             }),
             transactions: msg
                 .transactions
@@ -586,12 +577,10 @@ impl MessageBlock {
             entries: msg
                 .entries
                 .iter()
-                .map(|entry| {
-                    MessageEntry::from_update_oneof(entry, created_at).map(Arc::new)
-                })
+                .map(|entry| MessageEntry::from_update_oneof(entry, created_at).map(Arc::new))
                 .collect::<Result<Vec<_>, _>>()?,
             created_at,
-            correlation_id: next_correlation_id(msg.slot),
+            correlation_id: correlation_id_for_kind(msg.slot, "block"),
         })
     }
 }
@@ -624,33 +613,27 @@ impl Message {
         created_at: Timestamp,
     ) -> FromUpdateOneofResult<Self> {
         Ok(match oneof {
-            UpdateOneof::Account(msg) => Self::Account(MessageAccount::from_update_oneof(
-                msg,
-                created_at,
-            )?),
-            UpdateOneof::Slot(msg) => Self::Slot(MessageSlot::from_update_oneof(
-                &msg,
-                created_at,
-            )?),
-            UpdateOneof::Transaction(msg) => Self::Transaction(
-                MessageTransaction::from_update_oneof(msg, created_at)?,
-            ),
+            UpdateOneof::Account(msg) => {
+                Self::Account(MessageAccount::from_update_oneof(msg, created_at)?)
+            }
+            UpdateOneof::Slot(msg) => Self::Slot(MessageSlot::from_update_oneof(&msg, created_at)?),
+            UpdateOneof::Transaction(msg) => {
+                Self::Transaction(MessageTransaction::from_update_oneof(msg, created_at)?)
+            }
             UpdateOneof::TransactionStatus(_) => {
                 return Err("TransactionStatus message is not supported")
             }
-            UpdateOneof::Block(msg) => Self::Block(Arc::new(MessageBlock::from_update_oneof(
-                msg,
-                created_at,
-            )?)),
+            UpdateOneof::Block(msg) => {
+                Self::Block(Arc::new(MessageBlock::from_update_oneof(msg, created_at)?))
+            }
             UpdateOneof::Ping(_) => return Err("Ping message is not supported"),
             UpdateOneof::Pong(_) => return Err("Pong message is not supported"),
             UpdateOneof::BlockMeta(msg) => Self::BlockMeta(Arc::new(
                 MessageBlockMeta::from_update_oneof(msg, created_at),
             )),
-            UpdateOneof::Entry(msg) => Self::Entry(Arc::new(MessageEntry::from_update_oneof(
-                &msg,
-                created_at,
-            )?)),
+            UpdateOneof::Entry(msg) => {
+                Self::Entry(Arc::new(MessageEntry::from_update_oneof(&msg, created_at)?))
+            }
         })
     }
 }
