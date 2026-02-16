@@ -1126,7 +1126,7 @@ impl FilterAccountsDataSlice {
 
 #[cfg(test)]
 mod tests {
-    use crate::util::correlation_id::next_correlation_id;
+    use crate::util::correlation_id::correlation_id_for_kind;
     use {
         super::Filter,
         crate::plugin::{
@@ -1212,7 +1212,7 @@ mod tests {
             }),
             slot: 100,
             created_at: Timestamp::from(SystemTime::now()),
-            correlation_id: next_correlation_id(100),
+            correlation_id: correlation_id_for_kind(100, "test"),
         }
     }
 

@@ -114,7 +114,7 @@ mod tests {
         crate::plugin::message::{
             MessageAccount, MessageAccountInfo, MessageTransaction, MessageTransactionInfo,
         },
-        crate::util::correlation_id::{correlation_id_for_kind, correlation_id_for_transaction},
+        crate::util::correlation_id::{correlation_id_for_account, correlation_id_for_transaction},
         bytes::Bytes,
         prost_types::Timestamp,
         solana_pubkey::Pubkey,
@@ -152,12 +152,14 @@ mod tests {
             txn_signature: None,
             pre_encoded: None,
         };
+        let correlation_id =
+            correlation_id_for_account(100, &acc_info.pubkey, acc_info.write_version, None);
         Message::Account(MessageAccount {
             account: Arc::new(acc_info),
             slot: 100,
             is_startup: false,
             created_at: Timestamp::from(SystemTime::now()),
-            correlation_id: correlation_id_for_kind(100, "account"),
+            correlation_id,
         })
     }
 

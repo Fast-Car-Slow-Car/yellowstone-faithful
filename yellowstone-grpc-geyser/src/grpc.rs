@@ -1,4 +1,4 @@
-use crate::util::correlation_id::correlation_id_for_kind;
+use crate::util::correlation_id::correlation_id_for_slot;
 use {
     crate::{
         config::ConfigGrpc,
@@ -767,7 +767,8 @@ impl GrpcService {
                                 }
 
                                 slots.push(parent);
-                                let correlation_id = correlation_id_for_kind(parent, "slot");
+                                let correlation_id =
+                                    correlation_id_for_slot(parent, entry.parent_slot, status.as_str());
                                 let message_slot = Message::Slot(MessageSlot {
                                     slot: parent,
                                     parent: entry.parent_slot,

@@ -1050,9 +1050,7 @@ pub mod tests {
                 MessageTransaction, MessageTransactionInfo, SlotStatus,
             },
         },
-        crate::util::correlation_id::{
-            correlation_id_for_kind, correlation_id_for_transaction, next_correlation_id,
-        },
+        crate::util::correlation_id::{correlation_id_for_kind, correlation_id_for_transaction},
         bytes::Bytes,
         prost::Message as _,
         prost_011::Message as _,
@@ -1143,7 +1141,7 @@ pub mod tests {
                             slot,
                             is_startup,
                             created_at: Timestamp::from(SystemTime::now()),
-                            correlation_id: next_correlation_id(slot),
+                            correlation_id: correlation_id_for_kind(slot, "test"),
                         };
                         vec.push((msg, data_slice));
                     }
@@ -1163,7 +1161,7 @@ pub mod tests {
                 executed_transaction_count: 32,
                 starting_transaction_index: 1000,
                 created_at: Timestamp::from(SystemTime::now()),
-                correlation_id: next_correlation_id(299888121),
+                correlation_id: correlation_id_for_kind(299888121, "test"),
             },
             MessageEntry {
                 slot: 299888121,
@@ -1173,7 +1171,7 @@ pub mod tests {
                 executed_transaction_count: 32,
                 starting_transaction_index: 1000,
                 created_at: Timestamp::from(SystemTime::now()),
-                correlation_id: next_correlation_id(299888121),
+                correlation_id: correlation_id_for_kind(299888121, "test"),
             },
         ]
         .into_iter()
@@ -1257,7 +1255,7 @@ pub mod tests {
                         entries_count: entries.len() as u64,
                     },
                     created_at: Timestamp::from(SystemTime::now()),
-                    correlation_id: next_correlation_id(slot),
+                    correlation_id: correlation_id_for_kind(slot, "test"),
                 };
                 let mut block_meta2 = block_meta1.clone();
                 block_meta2.rewards =
@@ -1298,7 +1296,7 @@ pub mod tests {
             filters: create_message_filters(filters),
             message,
             created_at: Timestamp::from(SystemTime::now()),
-            correlation_id: Some(next_correlation_id(42)),
+            correlation_id: Some(correlation_id_for_kind(42, "test")),
         };
         let update = msg.as_subscribe_update();
         assert_eq!(msg.encoded_len(), update.encoded_len());
@@ -1423,7 +1421,7 @@ pub mod tests {
                             status,
                             dead_error: None,
                             created_at: Timestamp::from(SystemTime::now()),
-                            correlation_id: next_correlation_id(slot),
+                            correlation_id: correlation_id_for_kind(slot, "test"),
                         }),
                     )
                 }
@@ -1435,7 +1433,7 @@ pub mod tests {
                         status: SlotStatus::Dead,
                         dead_error: Some("123".to_owned()),
                         created_at: Timestamp::from(SystemTime::now()),
-                        correlation_id: next_correlation_id(slot),
+                        correlation_id: correlation_id_for_kind(slot, "test"),
                     }),
                 )
             }
@@ -1511,7 +1509,7 @@ pub mod tests {
                 transaction,
                 slot: 42,
                 created_at: Timestamp::from(SystemTime::now()),
-                correlation_id: next_correlation_id(42),
+                correlation_id: correlation_id_for_kind(42, "test"),
             };
             encode_decode_cmp(&["123"], FilteredUpdateOneof::transaction(&msg));
             encode_decode_cmp(&["123"], FilteredUpdateOneof::transaction_status(&msg));
