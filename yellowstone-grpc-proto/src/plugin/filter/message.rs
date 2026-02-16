@@ -1277,6 +1277,28 @@ pub mod tests {
         );
     }
 
+    fn assert_roundtrip_correlation_id<F>(
+        message: FilteredUpdateOneof,
+        correlation_id: Option<u64>,
+        assert_message_correlation_id: F,
+    ) where
+        F: Fn(&FilteredUpdateOneof, u64),
+    {
+        let msg = FilteredUpdate {
+            filters: create_message_filters(&["corr"]),
+            message,
+            created_at: Timestamp::from(SystemTime::now()),
+            correlation_id,
+        };
+
+        let update = SubscribeUpdate::decode(msg.encode_to_vec().as_slice()).expect("decode");
+        assert_eq!(update.correlation_id, correlation_id);
+
+        let filtered = FilteredUpdate::from_subscribe_update(update).expect("from_subscribe_update");
+        assert_eq!(filtered.correlation_id, correlation_id);
+        assert_message_correlation_id(&filtered.message, correlation_id.unwrap_or(0));
+    }
+
     #[test]
     fn test_message_account() {
         for (msg, data_slice) in create_accounts() {
@@ -1371,57 +1393,65 @@ pub mod tests {
     }
 
     #[test]
-    fn test_message_slot_with_correlation_id() {
-        let correlation_id = 777u64;
-        let msg = FilteredUpdate {
-            filters: create_message_filters(&["corr"]),
-            message: FilteredUpdateOneof::slot(MessageSlot {
-                slot: 42,
-                parent: Some(41),
-                status: SlotStatus::Processed,
-                dead_error: None,
-                created_at: Timestamp::from(SystemTime::now()),
-                correlation_id: 0,
-            }),
+    fn test_message_slot_correlation_id_roundtrip() {
+        let message = FilteredUpdateOneof::slot(MessageSlot {
+            slot: 42,
+            parent: Some(41),
+            status: SlotStatus::Processed,
+            dead_error: None,
             created_at: Timestamp::from(SystemTime::now()),
-            correlation_id: Some(correlation_id),
-        };
+            correlation_id: 9999,
+        });
 
-        let update = SubscribeUpdate::decode(msg.encode_to_vec().as_slice()).expect("decode");
-        assert_eq!(update.correlation_id, Some(correlation_id));
-
-        let filtered = FilteredUpdate::from_subscribe_update(update).expect("from_subscribe_update");
-        assert_eq!(filtered.correlation_id, Some(correlation_id));
-        match filtered.message {
-            FilteredUpdateOneof::Slot(slot) => assert_eq!(slot.correlation_id, correlation_id),
-            _ => panic!("expected slot message"),
+        for correlation_id in [None, Some(777)] {
+            assert_roundtrip_correlation_id(message.clone(), correlation_id, |message, expected| {
+                match message {
+                    FilteredUpdateOneof::Slot(slot) => assert_eq!(slot.correlation_id, expected),
+                    _ => panic!("expected slot message"),
+                }
+            });
         }
     }
 
     #[test]
-    fn test_message_slot_without_correlation_id() {
-        let msg = FilteredUpdate {
-            filters: create_message_filters(&["legacy"]),
-            message: FilteredUpdateOneof::slot(MessageSlot {
-                slot: 99,
-                parent: Some(98),
-                status: SlotStatus::Confirmed,
-                dead_error: None,
-                created_at: Timestamp::from(SystemTime::now()),
-                correlation_id: 1234,
-            }),
-            created_at: Timestamp::from(SystemTime::now()),
-            correlation_id: None,
-        };
+    fn test_message_blockmeta_correlation_id_roundtrip() {
+        let message = FilteredUpdateOneof::block_meta(
+            load_predefined_blockmeta()
+                .into_iter()
+                .next()
+                .expect("fixture blockmeta"),
+        );
 
-        let update = SubscribeUpdate::decode(msg.encode_to_vec().as_slice()).expect("decode");
-        assert_eq!(update.correlation_id, None);
+        for correlation_id in [None, Some(777)] {
+            assert_roundtrip_correlation_id(message.clone(), correlation_id, |message, expected| {
+                match message {
+                    FilteredUpdateOneof::BlockMeta(block_meta) => {
+                        assert_eq!(block_meta.correlation_id, expected)
+                    }
+                    _ => panic!("expected blockmeta message"),
+                }
+            });
+        }
+    }
 
-        let filtered = FilteredUpdate::from_subscribe_update(update).expect("from_subscribe_update");
-        assert_eq!(filtered.correlation_id, None);
-        match filtered.message {
-            FilteredUpdateOneof::Slot(slot) => assert_eq!(slot.correlation_id, 0),
-            _ => panic!("expected slot message"),
+    #[test]
+    fn test_message_entry_correlation_id_roundtrip() {
+        let message = FilteredUpdateOneof::entry(
+            create_entries()
+                .into_iter()
+                .next()
+                .expect("fixture entry"),
+        );
+
+        for correlation_id in [None, Some(777)] {
+            assert_roundtrip_correlation_id(message.clone(), correlation_id, |message, expected| {
+                match message {
+                    FilteredUpdateOneof::Entry(entry) => {
+                        assert_eq!(entry.0.correlation_id, expected)
+                    }
+                    _ => panic!("expected entry message"),
+                }
+            });
         }
     }
 }
