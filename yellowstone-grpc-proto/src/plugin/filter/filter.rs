@@ -1205,6 +1205,7 @@ mod tests {
             }),
             slot: 100,
             created_at: Timestamp::from(SystemTime::now()),
+            correlation_id: 100,
         }
     }
 

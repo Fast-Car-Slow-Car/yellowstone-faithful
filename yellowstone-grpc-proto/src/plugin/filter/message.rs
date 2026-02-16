@@ -1100,6 +1100,7 @@ pub mod tests {
                             slot,
                             is_startup,
                             created_at: Timestamp::from(SystemTime::now()),
+                            correlation_id: slot,
                         };
                         vec.push((msg, data_slice));
                     }
@@ -1119,6 +1120,7 @@ pub mod tests {
                 executed_transaction_count: 32,
                 starting_transaction_index: 1000,
                 created_at: Timestamp::from(SystemTime::now()),
+                correlation_id: 98,
             },
             MessageEntry {
                 slot: 299888121,
@@ -1128,6 +1130,7 @@ pub mod tests {
                 executed_transaction_count: 32,
                 starting_transaction_index: 1000,
                 created_at: Timestamp::from(SystemTime::now()),
+                correlation_id: 42,
             },
         ]
         .into_iter()
@@ -1210,6 +1213,7 @@ pub mod tests {
                         entries_count: entries.len() as u64,
                     },
                     created_at: Timestamp::from(SystemTime::now()),
+                    correlation_id: slot,
                 };
                 let mut block_meta2 = block_meta1.clone();
                 block_meta2.rewards =
@@ -1246,10 +1250,19 @@ pub mod tests {
     }
 
     fn encode_decode_cmp(filters: &[&str], message: FilteredUpdateOneof) {
+        encode_decode_cmp_with_correlation_id(filters, message, None);
+    }
+
+    fn encode_decode_cmp_with_correlation_id(
+        filters: &[&str],
+        message: FilteredUpdateOneof,
+        correlation_id: Option<u64>,
+    ) {
         let msg = FilteredUpdate {
             filters: create_message_filters(filters),
             message,
             created_at: Timestamp::from(SystemTime::now()),
+            correlation_id,
         };
         let update = msg.as_subscribe_update();
         assert_eq!(msg.encoded_len(), update.encoded_len());
@@ -1292,6 +1305,7 @@ pub mod tests {
                             status,
                             dead_error: None,
                             created_at: Timestamp::from(SystemTime::now()),
+                            correlation_id: slot,
                         }),
                     )
                 }
@@ -1303,6 +1317,7 @@ pub mod tests {
                         status: SlotStatus::Dead,
                         dead_error: Some("123".to_owned()),
                         created_at: Timestamp::from(SystemTime::now()),
+                        correlation_id: slot,
                     }),
                 )
             }
@@ -1316,6 +1331,7 @@ pub mod tests {
                 transaction,
                 slot: 42,
                 created_at: Timestamp::from(SystemTime::now()),
+                correlation_id: 42,
             };
             encode_decode_cmp(&["123"], FilteredUpdateOneof::transaction(&msg));
             encode_decode_cmp(&["123"], FilteredUpdateOneof::transaction_status(&msg));
@@ -1351,6 +1367,61 @@ pub mod tests {
     fn test_message_entry() {
         for entry in create_entries() {
             encode_decode_cmp(&["123"], FilteredUpdateOneof::entry(entry));
+        }
+    }
+
+    #[test]
+    fn test_message_slot_with_correlation_id() {
+        let correlation_id = 777u64;
+        let msg = FilteredUpdate {
+            filters: create_message_filters(&["corr"]),
+            message: FilteredUpdateOneof::slot(MessageSlot {
+                slot: 42,
+                parent: Some(41),
+                status: SlotStatus::Processed,
+                dead_error: None,
+                created_at: Timestamp::from(SystemTime::now()),
+                correlation_id: 0,
+            }),
+            created_at: Timestamp::from(SystemTime::now()),
+            correlation_id: Some(correlation_id),
+        };
+
+        let update = SubscribeUpdate::decode(msg.encode_to_vec().as_slice()).expect("decode");
+        assert_eq!(update.correlation_id, Some(correlation_id));
+
+        let filtered = FilteredUpdate::from_subscribe_update(update).expect("from_subscribe_update");
+        assert_eq!(filtered.correlation_id, Some(correlation_id));
+        match filtered.message {
+            FilteredUpdateOneof::Slot(slot) => assert_eq!(slot.correlation_id, correlation_id),
+            _ => panic!("expected slot message"),
+        }
+    }
+
+    #[test]
+    fn test_message_slot_without_correlation_id() {
+        let msg = FilteredUpdate {
+            filters: create_message_filters(&["legacy"]),
+            message: FilteredUpdateOneof::slot(MessageSlot {
+                slot: 99,
+                parent: Some(98),
+                status: SlotStatus::Confirmed,
+                dead_error: None,
+                created_at: Timestamp::from(SystemTime::now()),
+                correlation_id: 1234,
+            }),
+            created_at: Timestamp::from(SystemTime::now()),
+            correlation_id: None,
+        };
+
+        let update = SubscribeUpdate::decode(msg.encode_to_vec().as_slice()).expect("decode");
+        assert_eq!(update.correlation_id, None);
+
+        let filtered = FilteredUpdate::from_subscribe_update(update).expect("from_subscribe_update");
+        assert_eq!(filtered.correlation_id, None);
+        match filtered.message {
+            FilteredUpdateOneof::Slot(slot) => assert_eq!(slot.correlation_id, 0),
+            _ => panic!("expected slot message"),
         }
     }
 }
