@@ -5,3 +5,4 @@ pub mod stream;
 pub(crate) mod testkit;
 
 pub mod sync;
+pub mod correlation_id;
