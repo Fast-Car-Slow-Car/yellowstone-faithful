@@ -136,12 +136,12 @@ lazy_static::lazy_static! {
         .buckets(vec![1.0, 4.0, 8.0, 16.0, 24.0, 31.0])
     ).unwrap();
 
-    static ref GEYSER_PROCESSING_DELAY_MS: Histogram = Histogram::with_opts(
+    static ref GEYSER_PROCESSING_DELAY_US: Histogram = Histogram::with_opts(
         HistogramOpts::new(
-            "geyser_processing_delay_ms",
-            "Delay from first touch to send (milliseconds)"
+            "geyser_processing_delay_us",
+            "Delay from first touch to send (microseconds)"
         )
-        .buckets(vec![1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0])
+        .buckets(vec![1.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2_500.0, 5_000.0, 10_000.0, 25_000.0, 50_000.0, 100_000.0, 250_000.0])
     ).unwrap();
 }
 
@@ -296,7 +296,7 @@ impl PrometheusService {
             register!(GRPC_SUBSCRIBER_QUEUE_SIZE);
             register!(GEYSER_BATCH_SIZE);
             register!(GRPC_CLIENT_DISCONNECTS);
-            register!(GEYSER_PROCESSING_DELAY_MS);
+            register!(GEYSER_PROCESSING_DELAY_US);
 
             VERSION
                 .with_label_values(&[
@@ -493,13 +493,16 @@ pub fn observe_geyser_account_update_received(data_bytesize: usize) {
 
 pub fn observe_geyser_processing_delay(created_at: &Timestamp) {
     use std::time::{Duration, UNIX_EPOCH};
+
     let created_at_time = UNIX_EPOCH
         + Duration::from_secs(created_at.seconds.max(0) as u64)
         + Duration::from_nanos(created_at.nanos.max(0) as u64);
+
     let delay = std::time::SystemTime::now()
         .duration_since(created_at_time)
         .unwrap_or_default();
-    GEYSER_PROCESSING_DELAY_MS.observe(delay.as_secs_f64() * 1000.0);
+
+    GEYSER_PROCESSING_DELAY_US.observe(delay.as_micros() as f64);
 }
 
 pub fn set_subscriber_send_bandwidth_load<S: AsRef<str>>(subscriber_id: S, load: i64) {
