@@ -1072,8 +1072,8 @@ impl GrpcService {
                                 messages.sort_by_key(|msg| msg.0);
                                 for (_msgid, message) in messages.iter() {
                                     for message in filter.get_updates(message, Some(commitment)) {
-                                        metrics::observe_geyser_processing_delay(&message.created_at);
                                         let proto_size = message.encoded_len().min(u32::MAX as usize) as u32;
+                                        metrics::observe_geyser_processing_delay(&message.created_at);
                                         match stream_tx.send(Ok(message)).await {
                                             Ok(()) => {
                                                 metrics::incr_grpc_message_sent_counter(&subscriber_id);
@@ -1118,8 +1118,8 @@ impl GrpcService {
                     if commitment == filter.get_commitment_level() {
                         for (_msgid, message) in messages.iter() {
                             for message in filter.get_updates(message, Some(commitment)) {
-                                metrics::observe_geyser_processing_delay(&message.created_at);
                                 let proto_size = message.encoded_len().min(u32::MAX as usize) as u32;
+                                metrics::observe_geyser_processing_delay(&message.created_at);
                                 match stream_tx.try_send(Ok(message)) {
                                     Ok(()) => {
                                         metrics::incr_grpc_message_sent_counter(&subscriber_id);
